@@ -19,6 +19,7 @@
 
     <!-- TailwindCSS for modern design utility -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="dist/plugin/notes.js"></script>
 
     <style>
         /* CSS reset & base settings within reveal.js scope */
@@ -866,6 +867,7 @@
         // Start reveal.js loop on load
         window.onload = function () {
             Reveal.initialize({
+                plugins: [RevealNotes],
                 // Adjust logic layout bounds to match original slide container size
                 width: 1280,
                 height: 720,
