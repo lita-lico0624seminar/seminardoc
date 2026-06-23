@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini 実演デモ比較ビュー (2分割インタラクティブ版)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #f1f5f9;
+        }
+
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100%;
+            max-width: 600px; /* モバイル・分割画面対応 */
+            margin: 0 auto;
+            position: relative;
+            background: #ffffff;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.05);
+        }
+
+        /* ヘッダー */
+        header {
+            flex: 0 0 auto;
+            background: #ffffff;
+            border-bottom: 1px solid #f1f5f9;
+            padding: 12px 16px;
+            z-index: 50;
+        }
+
+        /* メイン表示エリア */
+        .content-container {
+            flex: 1 1 auto;
+            position: relative;
+            overflow: hidden;
+            padding: 12px;
+        }
+
+        /* 各デモページ */
+        .page {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            bottom: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            transition: transform 0.3s ease, opacity 0.2s ease;
+        }
+
+        .page.hidden {
+            transform: scale(0.96);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* 縦2分割用カード構造 */
+        .prompt-card {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0; /* フレックス縮小許可 */
+            background: #ffffff;
+            border-radius: 14px;
+            border: 1px solid #e2e8f0;
+            padding: 10px 14px;
+        }
+
+        /* クリック可能なプロンプトエリア（実際のチャット入力風） */
+        .prompt-clickable-input {
+            flex: 1;
+            min-height: 0;
+            position: relative;
+            background-color: #f0f4f8;
+            border: 2px dashed #cbd5e1;
+            border-radius: 10px;
+            padding: 10px 36px 10px 12px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            overflow-y: auto;
+        }
+
+        .prompt-clickable-input:hover {
+            background-color: #e6eef5;
+            border-color: #0ea5e9;
+            box-shadow: 0 2px 8px rgba(14, 165, 233, 0.08);
+        }
+
+        .prompt-text {
+            font-size: 20px;
+            color: #334155;
+            line-height: 1.5;
+            width: 100%;
+            word-break: break-all;
+        }
+
+        /* コピー用のアイコン表示 */
+        .copy-hint {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #94a3b8;
+            font-size: 14px;
+            transition: color 0.2s;
+        }
+
+        .prompt-clickable-input:hover .copy-hint {
+            color: #0ea5e9;
+        }
+
+        /* 解説枠 */
+        .explanation-box {
+            flex: 0 0 auto;
+            border-left: 4px solid #94a3b8;
+            padding: 8px 12px;
+            margin: 2px 0;
+            border-radius: 0 8px 8px 0;
+            display: none; /* 初期状態は非表示 */
+            animation: slideDown 0.2s ease-out forwards;
+        }
+
+        .explanation-box.bad-accent {
+            border-left-color: #f43f5e;
+            background-color: #fff1f2;
+        }
+
+        .explanation-box.good-accent {
+            border-left-color: #0ea5e9;
+            background-color: #f0f9ff;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ナビゲーション */
+        nav {
+            flex: 0 0 auto;
+            background: #ffffff;
+            border-top: 1px solid #e2e8f0;
+            padding: 10px 16px;
+        }
+
+        .nav-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .step-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+
+        .step-btn.inactive {
+            background-color: #f8fafc;
+            color: #64748b;
+            border-color: #e2e8f0;
+        }
+
+        .step-btn.active {
+            background-color: #e0f2fe;
+            color: #0369a1;
+            border-color: #0ea5e9;
+            box-shadow: 0 4px 6px -1px rgba(14, 165, 233, 0.15);
+        }
+
+        /* トースト通知 */
+        #toast {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background-color: #1e293b;
+            color: #ffffff;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        #toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* バッジスタイル */
+        .badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .badge-bad {
+            background-color: #ffe4e6;
+            color: #e11d48;
+        }
+        .badge-good {
+            background-color: #e0f2fe;
+            color: #0284c7;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+
+        <!-- ヘッダー -->
+        <header>
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 id="header-title" class="text-base font-bold text-slate-800">実演1：自己分析</h1>
+                </div>
+                <div class="text-[12px] font-bold text-sky-600 bg-sky-50 px-2 py-1 rounded">デモ</div>
+            </div>
+        </header>
+
+        <!-- メイン表示領域 -->
+        <div class="content-container">
+
+            <!-- ================= PAGE 1: DEMO 1 (自己分析) ================= -->
+            <div id="page1" class="page">
+                <!-- 2. 工夫なしのプロンプト (Bad) -->
+                <div class="prompt-card border-red-100">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-1.5">
+                            <span class="badge badge-bad">× 工夫なし</span>
+                        </div>
+                        <button onclick="toggleExplanation('d1-bad-exp', this)" class="text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded transition flex items-center gap-1">
+                            <i class="fa-solid fa-eye"></i> <span>課題を表示</span>
+                        </button>
+                    </div>
+
+                    <div class="prompt-clickable-input" onclick="copyPrompt('「優柔不断」をポジティブに言い換えて。')">
+                        <div class="prompt-text">
+                            「優柔不断」をポジティブに言い換えて。
+                        </div>
+                        <div class="copy-hint">
+                            <i class="fa-regular fa-copy"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. 工夫なしの課題 (工夫ありの上に表示) -->
+                <div id="d1-bad-exp" class="explanation-box bad-accent">
+                    <h3 class="font-bold text-rose-600 flex items-center gap-1 text-xs mb-1">
+                        <i class="fa-solid fa-triangle-exclamation"></i> 工夫なしの課題：
+                    </h3>
+                    <p class="text-[16px] text-slate-700 leading-normal font-medium">
+                        質問が短すぎると、AIは一般的な辞書通りのキーワードを羅列するだけで、具体的なシーンに沿ったアドバイスになりません。
+                    </p>
+                </div>
+
+                <!-- 4. 工夫ありのプロンプト (Good) -->
+                <div class="prompt-card border-blue-100">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-1.5">
+                            <span class="badge badge-good">○ 工夫あり</span>
+                        </div>
+                        <button onclick="toggleExplanation('d1-good-exp', this)" class="text-xs font-bold text-sky-600 bg-sky-50 hover:bg-sky-100 px-2.5 py-1 rounded transition flex items-center gap-1">
+                            <i class="fa-solid fa-eye"></i> <span>効果を表示</span>
+                        </button>
+                    </div>
+
+                    <div class="prompt-clickable-input" onclick="copyPrompt('あなたは事務職の採用担当です。\n私の短所「優柔不断」を、面接官に好印象を与えるポジティブな表現に言い換えて。\n単に言葉を換えるだけでなく、どう伝えれば誠実さが伝わるかも教えて。')">
+                        <div class="prompt-text">
+                            あなたは<strong>事務職の採用担当</strong>です。私の短所「優柔不断」を、<strong>面接官に好印象を与える</strong>ポジティブな表現に言い換えて。単に言葉を換えるだけでなく、どう伝えれば<strong>誠実さが伝わるか</strong>も教えて。
+                        </div>
+                        <div class="copy-hint">
+                            <i class="fa-regular fa-copy"></i>
+                        </div>
+                    </div>
+                </div>
+                <!-- 1. 工夫ありの効果 (工夫なしの上に表示) -->
+                <div id="d1-good-exp" class="explanation-box good-accent">
+                    <h3 class="font-bold text-sky-700 flex items-center gap-1 text-xs mb-1">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> 工夫ありの効果：
+                    </h3>
+                    <p class="text-[16px] text-slate-700 leading-normal font-medium">
+                        「就職面接」という<strong>背景</strong>と「誠実さを伝える」という<strong>目的</strong>を指定したため、面接に最適な回答をAIが生成してくれます。
+                    </p>
+                </div>
+
+            </div>
+
+            <!-- ================= PAGE 2: DEMO 2 (資料作成) ================= -->
+            <div id="page2" class="page hidden">
+
+
+
+                <!-- 2. 工夫なしのプロンプト (Bad) -->
+                <div class="prompt-card border-red-100">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-1.5">
+                            <span class="badge badge-bad">× 工夫なし</span>
+                        </div>
+                        <button onclick="toggleExplanation('d2-bad-exp', this)" class="text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded transition flex items-center gap-1">
+                            <i class="fa-solid fa-eye"></i> <span>課題を表示</span>
+                        </button>
+                    </div>
+
+                    <div class="prompt-clickable-input" onclick="copyPrompt('GeminiとChatGPTを比較するスライドを作成して。')">
+                        <div class="prompt-text">
+                            GeminiとChatGPTを比較するスライドを作成して。
+                        </div>
+                        <div class="copy-hint">
+                            <i class="fa-regular fa-copy"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. 工夫なしの課題 (工夫ありの上に表示) -->
+                <div id="d2-bad-exp" class="explanation-box bad-accent">
+                    <h3 class="font-bold text-rose-600 flex items-center gap-1 text-xs mb-1">
+                        <i class="fa-solid fa-triangle-exclamation"></i> 工夫なしの課題：
+                    </h3>
+                    <p class="text-[16px] text-slate-700 leading-normal font-medium">
+                        ざっくりと丸投げしてしまうと、AIは構成や目的、枚数を推測できず、過剰に長くなったり、意図に合わない構成になりがちです。
+                    </p>
+                </div>
+
+                <!-- 4. 工夫ありのプロンプト (Good) -->
+                <div class="prompt-card border-blue-100">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-1.5">
+                            <span class="badge badge-good">○ 工夫あり</span>
+                        </div>
+                        <button onclick="toggleExplanation('d2-good-exp', this)" class="text-xs font-bold text-sky-600 bg-sky-50 hover:bg-sky-100 px-2.5 py-1 rounded transition flex items-center gap-1">
+                            <i class="fa-solid fa-eye"></i> <span>効果を表示</span>
+                        </button>
+                    </div>
+
+                    <div class="prompt-clickable-input" onclick="copyPrompt('GeminiとChatGPTを比較するスライドを3枚以内で作成して。どちらも無料プラン前提で、専門用語を使わずに説明して。\nスライド構成は以下でお願い：\n1. Geminiだけの特徴\n2. ChatGPTだけの特徴\n3. 2つのAIの比較表')">
+                        <div class="prompt-text leading-relaxed">
+                            GeminiとChatGPTを比較するスライドを<strong>3枚以内で</strong>作成して。どちらも<strong>無料プラン前提で</strong>、<strong>専門用語を使わずに</strong>説明して。<br>スライド構成は以下の通りにお願い：<br>
+                            1. Geminiだけの特徴<br>2. ChatGPTだけの特徴<br>3. 2つのAIの比較表
+                        </div>
+                        <div class="copy-hint">
+                            <i class="fa-regular fa-copy"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 1. 工夫ありの効果 (工夫なしの上に表示) -->
+                <div id="d2-good-exp" class="explanation-box good-accent">
+                    <h3 class="font-bold text-sky-700 flex items-center gap-1 text-xs mb-1">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> 工夫ありの効果：
+                    </h3>
+                    <p class="text-[16px] text-slate-700 leading-normal font-medium">
+                        「枚数」「前提」「構成」といった<strong>具体的な制約</strong>を設けることで、要望に沿った高品質な出力を引き出すことができます。
+                    </p>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- トースト通知 -->
+        <div id="toast">
+            <i class="fa-solid fa-circle-check text-emerald-400"></i>
+            <span>コピーしました！</span>
+        </div>
+
+        <!-- ボトムナビゲーション -->
+        <nav>
+            <div class="nav-grid">
+                <button id="btn1" onclick="showPage(1)" class="step-btn active">
+                    <i class="fa-solid fa-user-tag"></i> 1. 自己分析
+                </button>
+                <button id="btn2" onclick="showPage(2)" class="step-btn inactive">
+                    <i class="fa-solid fa-file-powerpoint"></i> 2. 資料構成
+                </button>
+            </div>
+        </nav>
+
+    </div>
+
+    <script>
+        // クリップボードへのコピー機能 (document.execCommandのフォールバック対応)
+        function copyPrompt(text) {
+            const tempTextArea = document.createElement("textarea");
+            tempTextArea.value = text;
+            tempTextArea.style.position = "fixed"; // 画面外に配置
+            tempTextArea.style.top = "0";
+            tempTextArea.style.left = "0";
+            tempTextArea.style.opacity = "0";
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+
+            try {
+                document.execCommand("copy");
+                showToastNotification();
+            } catch (err) {
+                console.error("コピー失敗しました:", err);
+            }
+
+            document.body.removeChild(tempTextArea);
+        }
+
+        // トースト通知の表示
+        function showToastNotification() {
+            const toast = document.getElementById("toast");
+            toast.classList.add("show");
+            setTimeout(() => {
+                toast.classList.remove("show");
+            }, 1800);
+        }
+
+        // 解説枠の表示切り替え（トグル機能）
+        function toggleExplanation(id, btnElement) {
+            const expBox = document.getElementById(id);
+            const isHidden = window.getComputedStyle(expBox).display === "none";
+            const btnTextSpan = btnElement.querySelector("span");
+            const btnIcon = btnElement.querySelector("i");
+
+            if (isHidden) {
+                expBox.style.display = "block";
+                btnTextSpan.innerText = id.includes("bad") ? "課題を隠す" : "効果を隠す";
+                btnIcon.className = "fa-solid fa-eye-slash";
+                btnElement.classList.add("bg-slate-200");
+            } else {
+                expBox.style.display = "none";
+                btnTextSpan.innerText = id.includes("bad") ? "課題を表示" : "効果を表示";
+                btnIcon.className = "fa-solid fa-eye";
+                btnElement.classList.remove("bg-slate-200");
+            }
+        }
+
+        // デモページの表示切り替え
+        function showPage(pageNum) {
+            const p1 = document.getElementById('page1');
+            const p2 = document.getElementById('page2');
+            const b1 = document.getElementById('btn1');
+            const b2 = document.getElementById('btn2');
+            const title = document.getElementById('header-title');
+
+            if (pageNum === 1) {
+                p1.classList.remove('hidden');
+                p2.classList.add('hidden');
+                b1.className = "step-btn active";
+                b2.className = "step-btn inactive";
+                title.innerText = "実演1：自己分析";
+            } else {
+                p1.classList.add('hidden');
+                p2.classList.remove('hidden');
+                b1.className = "step-btn inactive";
+                b2.className = "step-btn active";
+                title.innerText = "実演2：スライド作成";
+            }
+        }
+    </script>
+</body>
+</html>
